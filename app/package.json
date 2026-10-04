@@ -1,0 +1,17 @@
+{
+  "name": "devops-pet-app",
+  "version": "1.0.0",
+  "description": "Simple Node.js app with Postgres, Redis cache and k8s-style health probes",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "redis": "^4.7.0"
+  }
+}

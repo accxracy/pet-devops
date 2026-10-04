@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-app
+spec:
+  replicas: {{ .Values.app.replicaCount }}
+
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-app
+
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-app
+    spec:
+      {{- with .Values.app.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+
+      containers:
+        - name: app
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+
+          env:
+            - name: PORT
+              value: {{ .Values.app.port | quote }}
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret }}
+                  key: password
+
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(DB_PASSWORD)@{{ .Release.Name }}-postgres:5432/{{ .Values.postgres.database }}"
+
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis:6379"
+
+            - name: CACHE_TTL
+              value: {{ .Values.app.cacheTtlSeconds | quote }}
+
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+
+          startupProbe:
+            httpGet:
+              path: /healthz/startup
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+

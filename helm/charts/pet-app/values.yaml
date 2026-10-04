@@ -1,0 +1,50 @@
+redis:
+  replicaCount: 1
+
+  image:
+    repository: redis
+    tag: "7-alpine"
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "64Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+postgres:
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  database: app
+  username: app
+  existingSecret: postgres-auth
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+app:
+  replicaCount: 1
+  image:
+    repository: registry.gitlab.com/accxracy/pet-devops
+    tag: "v1"
+    pullPolicy: IfNotPresent
+    imagePullSecrets:
+    - name: gitlab-registry
+  port: 3000
+  cacheTtlSeconds: 30
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+

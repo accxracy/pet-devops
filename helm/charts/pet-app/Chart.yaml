@@ -1,0 +1,7 @@
+apiVersion: v2
+name: pet-app
+description: DevOps learning application
+type: application
+version: 0.1.0
+appVersion: "v1"
+
