@@ -47,4 +47,8 @@ app:
     limits:
       cpu: "500m"
       memory: "256Mi"
+ingress:
+  enabled: true
+  className: nginx
+  host: pet-app.test
 

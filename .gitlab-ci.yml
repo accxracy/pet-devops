@@ -1,24 +1,95 @@
 stages:
   - build
+  - deploy
 
-check:
+image_publish:
   stage: build
-  image: docker:latest
-  
+  image: docker:29.8.2-cli
+
+  tags:
+    - $BUILD_RUNNER_TAG
+
   services:
     - name: docker:29.8.2-dind
       alias: docker
-  
+      command: ["--mtu=1400"]
+
   variables:
     DOCKER_HOST: "tcp://docker:2376"
     DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_CERT_PATH: "/certs/client"
     DOCKER_TLS_VERIFY: "1"
-  
+
+  before_script:
+    - docker info
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+
+  script:
+    - docker build -f Dockerfile -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" ./app
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+
+deploy_dev:
+  stage: deploy
+  image: alpine:3.24
 
   tags:
     - saas-linux-small-amd64
+
+  variables:
+    KUBECTL_VERSION: "v1.31.2"
+    KUBE_CONTEXT: "accxracy/pet-devops:pet-cluster"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+  environment:
+    name: dev-kind
+    deployment_tier: development
+
+  resource_group: pet-app-dev
+
+  before_script:
+    - apk add --no-cache curl ca-certificates 'helm~3.19'
+    - |
+      set -eu
+      BASE="https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64"
+      curl -fsSL --retry 3 "$BASE/kubectl" -o /tmp/kubectl
+      curl -fsSL --retry 3 "$BASE/kubectl.sha256" -o /tmp/kubectl.sha256
+      (
+        cd /tmp
+        echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
+      )
+      chmod +x /tmp/kubectl
+      mv /tmp/kubectl /usr/local/bin/kubectl
+    - kubectl config get-contexts
+    - kubectl config use-context "$KUBE_CONTEXT"
+    - kubectl --namespace pet-app get pods
+    - helm status pet-app --namespace pet-app
+
   script:
-    - docker build -f Dockerfile -t pet-app:v1 ./app
-    - docker image ls
-    
+    - |
+      helm upgrade pet-app ./helm/charts/pet-app \
+        --kube-context "$KUBE_CONTEXT" \
+        --namespace pet-app \
+        --reuse-values \
+        --set-string app.image.repository="$CI_REGISTRY_IMAGE" \
+        --set-string app.image.tag="$CI_COMMIT_SHA" \
+        --wait \
+        --timeout 5m
+    - kubectl --namespace pet-app rollout status deployment/pet-app-app --timeout=120s
+    - |
+      ACTUAL_IMAGE=$(kubectl --namespace pet-app get deployment pet-app-app \
+        -o jsonpath='{.spec.template.spec.containers[0].image}')
+      EXPECTED_IMAGE="$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+      printf 'Deployment image: %s\n' "$ACTUAL_IMAGE"
+      test "$ACTUAL_IMAGE" = "$EXPECTED_IMAGE"
+    - kubectl --namespace pet-app get deployments,statefulsets,pods
+
+  after_script:
+    - |
+      if command -v kubectl >/dev/null 2>&1; then
+        kubectl config use-context "$KUBE_CONTEXT" >/dev/null 2>&1 || true
+        kubectl --namespace pet-app get pods || true
+        kubectl --namespace pet-app get events --sort-by=.metadata.creationTimestamp || true
+      fi   
