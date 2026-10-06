@@ -3,7 +3,7 @@ stages:
 
 check:
   stage: check_gitlab_runner
-  image: apline:3.22
+  image: alpine:3.22
   tags:
     - saas-linux-small-amd64
   script:
