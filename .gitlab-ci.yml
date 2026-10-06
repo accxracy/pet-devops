@@ -1,0 +1,12 @@
+stages:
+  - check_gitlab_runner
+
+check:
+  stage: check_gitlab_runner
+  image: apline:3.22
+  tags:
+    - saas-linux-small-amd64
+  script:
+    - echo "Runner works"
+    - pwd
+    - ls -la
