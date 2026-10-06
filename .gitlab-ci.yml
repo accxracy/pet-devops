@@ -1,12 +1,24 @@
 stages:
-  - check_gitlab_runner
+  - build
 
 check:
-  stage: check_gitlab_runner
-  image: alpine:3.22
+  stage: build
+  image: docker:latest
+  
+  services:
+    - name: docker:29.8.2-dind
+      alias: docker
+  
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_TLS_VERIFY: "1"
+  
+
   tags:
     - saas-linux-small-amd64
   script:
-    - echo "Runner works"
-    - pwd
-    - ls -la
+    - docker build -f Dockerfile -t pet-app:v1 ./app
+    - docker image ls
+    
