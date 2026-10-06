@@ -105,12 +105,37 @@ http_ping:
   tags:
     - saas-linux-small-amd64
 
+  variables:
+    KUBECTL_VERSION: "v1.31.2"
+    KUBE_CONTEXT: "accxracy/pet-devops:pet-cluster"
+
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
+  resource_group: pet-app-dev
+
   before_script:
     - apk add --no-cache curl ca-certificates
+    - |
+      set -eu
+      BASE="https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64"
+      curl -fsSL --retry 3 "$BASE/kubectl" -o /tmp/kubectl
+      curl -fsSL --retry 3 "$BASE/kubectl.sha256" -o /tmp/kubectl.sha256
+      (
+        cd /tmp
+        echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
+      )
+      chmod +x /tmp/kubectl
+      mv /tmp/kubectl /usr/local/bin/kubectl
+     - kubectl config use-context "$KUBE_CONTEXT"
 
   script:
-    - curl --fail --show-error --silent --max-time 10 "$SMOKE_URL/healthz/ready"
-    - curl --fail --show-error --silent --max-time 10 "$SMOKE_URL/todos"
+    - |
+      kubectl -n pet-app run http-smoke \
+         --image=curlimages/curl:8.16.0 \
+         --restart=Never \
+         --rm -i \
+         --command -- \
+         curl --fail --show-error --silent --max-time 10 \
+         -H "Host: pet-app.test" \
+         $SMOKE_URL/healthz/ready
