@@ -90,7 +90,6 @@ deploy_dev:
       helm upgrade pet-app ./helm/charts/pet-app \
         --kube-context "$KUBE_CONTEXT" \
         --namespace pet-app \
-        --reuse-values \
         --set-string app.image.repository="$CI_REGISTRY_IMAGE" \
         --set-string app.image.tag="$CI_COMMIT_SHA" \
         --wait \

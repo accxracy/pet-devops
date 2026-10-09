@@ -55,6 +55,7 @@ ingress:
 
 
 serviceMonitor:
+  enabled: true
   path: /metrics
   interval: 30s
   scrapeTimeout: 10s
