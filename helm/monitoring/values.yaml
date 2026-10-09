@@ -1,0 +1,16 @@
+grafana:
+  persistence:
+    type: pvc
+    storageClassName: standart
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+  sidecar:
+    dashboards:
+      enables: true
+
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    scrapeInterval: 30s

@@ -1,6 +1,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const { createClient } = require('redis');
+const client = require('prom-client');
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL =
@@ -28,6 +29,63 @@ const withTimeout = (promise, ms = 2000) =>
 
 const app = express();
 app.use(express.json());
+
+// ---------- Metrics (Prometheus) ----------
+
+const register = new client.Registry();
+client.collectDefaultMetrics({ register }); // CPU, memory, event loop lag, GC...
+
+const httpDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+  registers: [register],
+});
+
+const cacheHits = new client.Counter({
+  name: 'cache_hits_total',
+  help: 'Number of Redis cache hits',
+  registers: [register],
+});
+
+const cacheMisses = new client.Counter({
+  name: 'cache_misses_total',
+  help: 'Number of Redis cache misses',
+  registers: [register],
+});
+
+new client.Gauge({
+  name: 'app_started',
+  help: '1 if initialization (DB, Redis, migration) is complete',
+  registers: [register],
+  collect() {
+    this.set(started ? 1 : 0);
+  },
+});
+
+// Measure every request; `route` is the matched pattern (low cardinality)
+app.use((req, res, next) => {
+  const end = httpDuration.startTimer();
+  res.on('finish', () => {
+    end({
+      method: req.method,
+      route: req.route ? req.route.path : 'unmatched',
+      status_code: res.statusCode,
+    });
+  });
+  next();
+});
+
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (e) {
+    console.error(e);
+    res.status(500).end();
+  }
+});
 
 // ---------- Probes ----------
 
@@ -72,6 +130,7 @@ app.get('/todos', async (req, res) => {
     try {
       const cached = await redis.get('todos');
       if (cached) {
+        cacheHits.inc();
         res.set('X-Cache', 'HIT');
         return res.json(JSON.parse(cached));
       }
@@ -89,6 +148,7 @@ app.get('/todos', async (req, res) => {
       console.error('cache write failed:', e.message);
     }
 
+    cacheMisses.inc();
     res.set('X-Cache', 'MISS');
     res.json(rows);
   } catch (e) {

@@ -52,3 +52,11 @@ ingress:
   className: nginx
   host: pet-app.test
 
+
+
+serviceMonitor:
+  path: /metrics
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    release: monitoring
