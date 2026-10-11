@@ -7,7 +7,9 @@ grafana:
     size: 1Gi
   sidecar:
     dashboards:
-      enables: true
+      enabled: true
+      searchNamespace: ALL
+      label: grafana_dashboard
 
 
 prometheus:
