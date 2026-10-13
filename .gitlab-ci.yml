@@ -7,7 +7,7 @@ stages:
 .kube_access:
   image: alpine:3.24
   tags:
-    - saas-linux-small-amd64
+    - $BUILD_RUNNER_TAG
   variables:
     KUBECTL_VERSION: "v1.31.2"
     KUBE_CONTEXT: "accxracy/pet-devops:pet-cluster"
