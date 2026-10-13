@@ -120,5 +120,3 @@ build → monitoring → deploy → test
 - [x] Добавить CronJob для резервного копирования PostgreSQL
 - [ ] Настроить правила алертов и уведомления
 - [x] Настроить RBAC
-
-
