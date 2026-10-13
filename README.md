@@ -117,6 +117,6 @@ build → monitoring → deploy → test
 - [x] Развернуть Prometheus и Grafana
 - [x] Настроить сбор метрик и собрать дашборд
 - [x] Добавить HTTP smoke test
-- [ ] Добавить CronJob для резервного копирования PostgreSQL
+- [x] Добавить CronJob для резервного копирования PostgreSQL
 - [ ] Настроить правила алертов и уведомления
-- [ ] Настроить RBAC
+- [x] Настроить RBAC
