@@ -1,122 +1,179 @@
 # Pet DevOps
 
-Учебный DevOps-проект: развёртывание Node.js-приложения в Kubernetes, автоматизация доставки через GitLab CI/CD и мониторинг с помощью Prometheus и Grafana.
+Учебный DevOps-проект: развёртывание Node.js-приложения с PostgreSQL и Redis в Kubernetes, автоматизация доставки через GitLab CI/CD и наблюдаемость с Prometheus и Grafana.
 
-Цель проекта — разобраться в полном цикле работы приложения: от сборки Docker-образа до деплоя, проверки работоспособности и наблюдения за метриками. Компоненты добавляются постепенно, с проверкой их взаимодействия.
+Цель проекта: на практике изучить полный жизненный цикл приложения: контейнеризацию, подготовку локальной инфраструктуры, доставку изменений, настройку доступа, мониторинг, резервное копирование и диагностику неисправностей.
+
+> **Статус:** учебная среда, не production-ready. Наличие манифестов и шаблонов не означает, что все сценарии восстановления и отказоустойчивости испытаны.
 
 ## О приложении и моей работе
 
-**Node.js-приложение создано с помощью Claude.** Оно используется как рабочая нагрузка для изучения инфраструктуры, автоматизации и мониторинга.
-
-Мой основной фокус — настройка Kubernetes-окружения, развёртывание приложения вместе с PostgreSQL и Redis, построение CI/CD-пайплайна и интеграция мониторинга.
+Node.js-приложение создано с помощью Claude и служит тестовой рабочей нагрузкой для инфраструктуры. Мой основной фокус: Docker, Kubernetes, Helm, Terraform, GitLab CI/CD, GitLab Agent, RBAC и мониторинг.
 
 ## Архитектура
 
 ```text
 GitLab CI/CD
-├── Сборка Docker-образа
-│   └── Публикация в GitLab Container Registry
-└── Доступ к Kubernetes через GitLab Agent
-    ├── Развёртывание мониторинга через Helm
-    ├── Обновление приложения через Helm
-    └── Проверка readiness endpoint
+  |
+  +-- build: Docker image -> GitLab Container Registry (commit SHA)
+  |
+  +-- monitoring: Helm -> kube-prometheus-stack
+  |
+  +-- deploy: Helm -> Node.js / PostgreSQL / Redis
+  |             через Kubernetes-контекст GitLab Agent
+  |
+  +-- test: HTTP smoke test -> /healthz/ready
 
-kind-кластер
-├── Namespace: pet-app
-│   ├── Node.js-приложение
-│   ├── PostgreSQL
-│   └── Redis
-└── Namespace: monitoring
-    ├── Prometheus
-    └── Grafana
-
-Prometheus ── собирает метрики /metrics ──> Приложение
-Grafana ── запрашивает метрики ──> Prometheus
+Локальный kind-кластер (Terraform, 1 control-plane + 2 worker)
+  |
+  +-- namespace pet-app
+  |     +-- Node.js Deployment -> PostgreSQL StatefulSet
+  |     |                       -> Redis
+  |     +-- Ingress / Service
+  |     +-- ServiceMonitor -> /metrics
+  |     +-- CronJob pg-dump -> PVC postgres-backups
+  |     +-- ConfigMap: Grafana dashboard JSON
+  |
+  +-- namespace monitoring
+        +-- Prometheus (scrape метрик приложения)
+        +-- Grafana (дашборд, sidecar для ConfigMap)
 ```
 
-Приложение и мониторинг разворачиваются отдельными Helm-релизами. ServiceMonitor описывает сбор метрик приложения, Prometheus сохраняет их, а Grafana отображает на дашборде.
+Приложение и стек мониторинга разворачиваются отдельными Helm-релизами. GitLab Runner исполняет CI jobs, а GitLab Agent обеспечивает доступ к Kubernetes API через настроенный контекст. Права этого доступа регулируются Kubernetes RBAC.
 
-## Стек
+## Технологии
 
+| Область | Инструменты |
+| --- | --- |
+| Приложение и данные | Node.js, PostgreSQL, Redis |
+| Контейнеризация | Docker, GitLab Container Registry |
+| Оркестрация | Kubernetes (kind), Helm, NGINX Ingress |
+| Infrastructure as Code | Terraform (`kind` provider) |
+| CI/CD | GitLab CI/CD, GitLab Runner, GitLab Agent for Kubernetes |
+| Безопасность и доступ | Kubernetes RBAC, ServiceAccount, Kubernetes Secrets, GitLab CI/CD variables |
+| Мониторинг | Prometheus, Grafana, kube-prometheus-stack, ServiceMonitor |
+| Резервное копирование | Kubernetes CronJob, `pg_dump`, `pg_restore`, PVC |
 
-| Задача                            | Технологии                                 |
-| --------------------------------- | ------------------------------------------ |
-| Приложение                        | Node.js                                    |
-| Сервисы данных                    | PostgreSQL, Redis                          |
-| Контейнеризация                   | Docker                                     |
-| Локальный Kubernetes-кластер      | kind                                       |
-| Описание и развёртывание ресурсов | Helm                                       |
-| Автоматизация доставки            | GitLab CI/CD                               |
-| Доступ из CI к кластеру           | GitLab Agent for Kubernetes                |
-| Мониторинг                        | Prometheus, Grafana, kube-prometheus-stack |
+## Что реализовано в репозитории
 
+### Инфраструктура и приложение
 
+- **Terraform** описывает локальный kind-кластер с одной control-plane- и двумя worker-нодами (`IaC/main.tf`).
+- **Docker** используется для контейнеризации Node.js-приложения.
+- **Helm** описывает приложение, PostgreSQL, Redis, сервисы, Ingress, ServiceMonitor, CronJob и ConfigMap дашборда.
+- **PostgreSQL** запускается как StatefulSet с постоянным хранилищем; Redis используется приложением как отдельный сервис.
+- **RBAC** описан в `IaC/rbac.yaml` для доступа CI/Agent к ресурсам кластера и namespace.
 
+### GitLab CI/CD
 
-## Что реализовано
-
-- **Сборка и публикация образа.** Пайплайн собирает Docker-образ приложения и публикует его в GitLab Container Registry с тегом на основе SHA коммита.
-- **Развёртывание через Helm.** Приложение и его зависимости описаны в Helm-чарте.
-- **Автоматическое обновление приложения.** CI передаёт новый тег образа, ожидает завершения rollout и проверяет, что Deployment использует нужный образ.
-- **Smoke test внутри кластера.** После деплоя выполняется HTTP-запрос к readiness endpoint приложения.
-- **Сбор метрик.** Prometheus обнаруживает endpoint приложения через ServiceMonitor.
-- **Визуализация в Grafana.** Создан дашборд с метриками HTTP-запросов, CPU, heap memory и времени работы процесса.
-- **Постоянное хранилище Grafana.** PVC позволяет сохранять её данные при обычном пересоздании Pod.
-- **Передача учётных данных через CI/CD variables.** Первоначальные логин и пароль администратора Grafana не записываются в репозиторий.
-
-
-
-## CI/CD
-
-Порядок стадий:
+Пайплайн в `.gitlab-ci.yml` состоит из четырёх стадий:
 
 ```text
-build → monitoring → deploy → test
+build -> monitoring -> deploy -> test
 ```
 
-1. **Build** — сборка и публикация образа приложения.
-2. **Monitoring** — установка или обновление стека Prometheus и Grafana.
-3. **Deploy** — обновление приложения, проверка rollout и тега образа.
-4. **Test** — HTTP-проверка готовности приложения изнутри кластера.
+1. **build**  сборка Docker-образа и публикация в GitLab Container Registry с тегом `$CI_COMMIT_SHA`.
+2. **monitoring**  установка или обновление `kube-prometheus-stack` с помощью Helm.
+3. **deploy**  обновление Helm-релиза приложения, ожидание готовности Deployment и проверка фактического тега образа.
+4. **test**  HTTP smoke test endpoint `/healthz/ready` из временного Pod внутри кластера.
 
-Общий шаблон `.kube_access` подготавливает инструменты и выбирает контекст GitLab Agent. Развёртывание и smoke test настроены для основной ветки проекта.
+Для работы с кластером используется Kubernetes-контекст GitLab Agent. Jobs для Kubernetes ограничены основной веткой проекта. Мониторинг устанавливается перед приложением, чтобы CRD для ServiceMonitor были доступны к моменту деплоя.
 
-Мониторинг устанавливается перед приложением, чтобы необходимые CRD, включая ServiceMonitor, были доступны при деплое приложения.
+> **Нюанс:** текущая команда для приложения  `helm upgrade` (без `--install`). Это предполагает, что первоначальная установка релиза уже выполнена. Пайплайн использует `--wait`, но не настраивает автоматический rollback при неуспешном upgrade.
 
-## Мониторинг
+### Мониторинг
 
-Приложение отдаёт метрики через `/metrics`. На текущем дашборде представлены:
+- Приложение экспортирует метрики на `/metrics`.
+- `ServiceMonitor` задаёт обнаружение endpoint приложения для Prometheus.
+- Grafana отображает HTTP RPS, CPU usage, Node.js heap memory, uptime; запрос для панели error rate ещё требует проверки.
+- JSON дашборда находится в `helm/charts/pet-app/dashboards/dashboard.json`.
+- Helm-шаблон `dashboard.yaml` создаёт ConfigMap с меткой `grafana_dashboard: "1"`.
+- В `helm/monitoring/values.yaml` включён Grafana dashboard sidecar, который ищет ConfigMap с этой меткой во всех namespace (`searchNamespace: ALL`).
+- Для Grafana предусмотрен PVC; логин и пароль администратора передаются из GitLab CI/CD variables.
 
-- **HTTP Requests (RPS)** — количество запросов в секунду;
-- **CPU Usage** — использование CPU процессом приложения;
-- **Node.js Heap Memory** — используемая память в heap;
-- **Uptime** — время работы процесса;
-- **Error Rate** — панель доли HTTP-ошибок, запрос для которой ещё уточняется.
+**Статус автоматической загрузки дашборда:** конфигурация ConfigMap + sidecar уже реализована. Корректную загрузку дашборда после чистого развёртывания следует проверять отдельно в работающем кластере.
 
-Запросы и labels проверяются по фактическим данным приложения. Количество scrape targets в Prometheus не равно количеству Pod в Kubernetes, а отсутствие данных об ошибках само по себе не доказывает, что ошибок нет.
+### Резервное копирование PostgreSQL
 
-**Автоматическое развёртывание дашборда из Git находится в работе.** Планируется хранить экспортированный JSON внутри Helm-чарта приложения и передавать его Grafana через ConfigMap с соответствующей меткой.
+- В Helm-чарте создан Kubernetes CronJob `pg-dump`.
+- Расписание по умолчанию: `0 3 * * 1` - по понедельникам в 03:00.
+- CronJob выполняет `pg_dump --format=custom` и проверяет, что архив читается командой `pg_restore --list`.
+- Файл сначала записывается с суффиксом `.partial`, затем переименовывается после успешного завершения.
+- Дампы хранятся на PVC `postgres-backups` размером 2 GiB в namespace `pet-app`.
+- Пароль PostgreSQL считывается из Kubernetes Secret, а ServiceAccount token не монтируется в контейнер CronJob.
 
-## Текущие ограничения
+**Ограничения:** бэкапы пока хранятся на PVC в локальном кластере, а не во внешнем независимом хранилище. `pg_restore --list` проверяет структуру архива, но не заменяет тестовое восстановление и проверку данных. Автоматизированная процедура восстановления и контроль сохранности копий за пределами кластера пока не представлены.
 
-Проект предназначен для обучения и пока не является production-ready платформой.
+## Структура репозитория
 
-- Кластер работает локально, поэтому его доступность зависит от компьютера и контейнерного окружения.
-- Деплой из CI зависит от доступности GitLab Agent и соединения с кластером.
-- Локальные PersistentVolume не заменяют резервное копирование за пределы кластера.
-- Автоматические бэкапы PostgreSQL и процедура восстановления пока не реализованы.
+```text
+.
+├── .gitlab/agents/       # конфигурация GitLab Agent
+├── .gitlab-ci.yml        # CI/CD pipeline
+├── IaC/                  # Terraform и RBAC
+├── app/                  # Node.js приложение
+├── backup/               # PVC для бэкапов
+├── helm/
+│   ├── charts/pet-app/   # Helm-чарт приложения и сервисов
+│   └── monitoring/       # значения для kube-prometheus-stack
+├── Dockerfile
+└── README.md
+```
 
+## Быстрые проверки после развёртывания
 
+Команды ниже предполагают настроенный `kubectl`-контекст для локального кластера и уже установленные Helm-релизы.
 
-## Планы
+```bash
+kubectl get nodes
+kubectl get pods,svc,pvc -n pet-app
+kubectl get pods,pvc -n monitoring
+helm status pet-app -n pet-app
+helm status monitoring -n monitoring
+```
 
-- [x] Контейнеризировать приложение
-- [x] Настроить сборку и публикацию образов в GitLab CI/CD
-- [x] Развернуть приложение, PostgreSQL и Redis через Helm
-- [x] Подключить CI к кластеру через GitLab Agent
+Проверка бэкапного CronJob и его запусков:
+
+```bash
+kubectl get cronjob pg-dump -n pet-app
+kubectl get jobs -n pet-app
+kubectl get pvc postgres-backups -n pet-app
+```
+
+Проверка ConfigMap дашборда:
+
+```bash
+kubectl get configmaps -n pet-app -l grafana_dashboard=1
+```
+
+Проверка прав Kubernetes требует указания соответствующего ServiceAccount и namespace; манифесты расположены в `IaC/rbac.yaml`.
+
+## Ограничения и технический долг
+
+- **Локальное окружение:** доступность kind-кластера зависит от компьютера и Docker.
+- **Хранение данных:** локальные PVC не заменяют внешние резервные копии.
+- **Disaster recovery:** регулярный тест восстановления PostgreSQL из бэкапа ещё не описан и не автоматизирован.
+- **CI/CD:** `helm upgrade --wait` не обеспечивает автоматический rollback; поведение при неудачном релизе требует отдельного сценария.
+- **Мониторинг:** панель error rate требует проверки; Alertmanager и уведомления пока не настроены.
+- **Безопасность:** инфраструктура учебная; перед переносом в production понадобятся дополнительные меры по управлению секретами, политике сетевого доступа, обновлениям и доступности.
+
+## Roadmap
+
+- [x] Контейнеризировать Node.js-приложение
+- [x] Добавить PostgreSQL и Redis
+- [x] Описать локальный kind-кластер через Terraform
+- [x] Создать Helm-чарт приложения
+- [x] Настроить GitLab CI/CD и публикацию образов
+- [x] Подключить GitLab Agent к кластеру
+- [x] Добавить readiness smoke test после деплоя
 - [x] Развернуть Prometheus и Grafana
-- [x] Настроить сбор метрик и собрать дашборд
-- [x] Добавить HTTP smoke test
-- [x] Добавить CronJob для резервного копирования PostgreSQL
-- [ ] Настроить правила алертов и уведомления
-- [x] Настроить RBAC
+- [x] Добавить ServiceMonitor и дашборд
+- [x] Добавить Helm ConfigMap дашборда и Grafana sidecar
+- [x] Описать RBAC для GitLab Agent / CI
+- [x] Добавить CronJob для `pg_dump` на PVC
+- [ ] Настроить Alertmanager, правила алертов и уведомления
+
+
+## Назначение проекта
+
+Это практический полигон для освоения DevOps: важно не только развернуть работающий стек, но и уметь объяснить поток деплоя, диагностировать сетевые и Kubernetes-сбои.
