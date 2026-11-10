@@ -19,8 +19,10 @@ prometheus:
 
 alertmanager:
   enabled: true
+
   alertmanagerSpec:
     replicas: 1
+
   config:
     route:
       receiver: telegram
@@ -28,8 +30,12 @@ alertmanager:
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
+      routes: []  
+
     receivers:
       - name: telegram
         telegram_configs:
           - chat_id: 1095106768
             send_resolved: true
+
+      - name: 'null'
