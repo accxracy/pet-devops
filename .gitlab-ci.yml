@@ -69,7 +69,8 @@ prometheus_and_grafana:
         --values helm/monitoring/values.yaml \
         --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
         --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
-        --wait \
+        --set-string "alertmanager.config.receivers[0].telegram_configs[0].bot_token=${TELEGRAM_BOT_API}" \
+        --atomic \
         --timeout 5m
     - kubectl -n monitoring get pods
 
@@ -92,7 +93,7 @@ deploy_dev:
         --namespace pet-app \
         --set-string app.image.repository="$CI_REGISTRY_IMAGE" \
         --set-string app.image.tag="$CI_COMMIT_SHA" \
-        --wait \
+        --atomic \
         --timeout 5m
     - kubectl --namespace pet-app rollout status deployment/pet-app-app --timeout=120s
     - |

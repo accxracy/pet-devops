@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata: 
+    name: {{ .Release.Name }}-alerts
+    namespace: {{ .Release.Namespace }}
+    labels:
+        release: monitoring
+spec:
+    groups: 
+        - name: alert-rule
+          rules:
+            - alert: PetAppDown
+              expr: up{namespace="pet-app", service="pet-app-app"} == 0
+              for: 2m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Node.js app down"
+                description: "Node.js application stopped responding to Prometheus metrics requests"

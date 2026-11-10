@@ -16,3 +16,20 @@ prometheus:
   prometheusSpec:
     retention: 7d
     scrapeInterval: 30s
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+  config:
+    route:
+      receiver: telegram
+      group_by: ['alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: telegram
+        telegram_configs:
+          - chat_id: 1095106768
+            send_resolved: true
