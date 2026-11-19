@@ -41,9 +41,6 @@ lint:helm:
     - helm lint ./helm/charts/pet-app
 
 
-
-
-
 image_publish:
   stage: build
   image: docker:29.8.2-cli
@@ -68,6 +65,7 @@ image_publish:
 prometheus_and_grafana:
   extends: .kube_access
   stage: monitoring
+  needs: ["lint:helm"]
   resource_group: pet-monitoring
   variables:
     KPS_CHART_VERSION: "61.3.2"
@@ -91,6 +89,7 @@ prometheus_and_grafana:
     - kubectl -n monitoring get pods
 
 deploy_dev:
+  needs: ["prometheus_and_grafana", "image_publish"]
   extends: .kube_access
   stage: deploy
   environment:
@@ -130,6 +129,7 @@ deploy_dev:
 http_ping:
   extends: .kube_access
   stage: test
+  needs: ["deploy_dev"]
   resource_group: pet-app-dev
   script:
     - |
